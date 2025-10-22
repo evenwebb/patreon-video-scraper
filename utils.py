@@ -7,17 +7,18 @@ Helper functions for file I/O, date parsing, and formatting.
 import json
 import os
 from datetime import datetime
-from typing import List, Dict, Any
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import config
 
 
-def clear_screen():
+def clear_screen() -> None:
     """Clear terminal screen (cross-platform)."""
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
-def print_startup_banner():
+def print_startup_banner() -> None:
     """Print startup banner with ASCII logo and credits."""
     clear_screen()
     print("""
@@ -40,7 +41,7 @@ def print_startup_banner():
 def save_results_to_json(
     data: Dict[str, Any],
     creator_vanity: str,
-    output_dir: str = None
+    output_dir: Optional[str] = None
 ) -> str:
     """
     Save scraping results to a JSON file.
@@ -56,12 +57,14 @@ def save_results_to_json(
     if output_dir is None:
         output_dir = config.OUTPUT_DIR
 
+    output_path = Path(output_dir)
+
     # Add creator subfolder if configured
     if config.OUTPUT_ORGANIZE_BY_CREATOR:
-        output_dir = os.path.join(output_dir, creator_vanity)
+        output_path = output_path / creator_vanity
 
     # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     # Generate filename with timestamp
     timestamp = datetime.now().strftime(config.TIMESTAMP_FORMAT)
@@ -69,19 +72,19 @@ def save_results_to_json(
         creator_vanity=creator_vanity,
         timestamp=timestamp
     )
-    filepath = os.path.join(output_dir, filename)
+    filepath = output_path / filename
 
     # Save to file
-    with open(filepath, 'w', encoding='utf-8') as f:
+    with filepath.open('w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-    return filepath
+    return str(filepath)
 
 
 def save_raw_urls_to_txt(
     urls: List[str],
     creator_vanity: str,
-    output_dir: str = None,
+    output_dir: Optional[str] = None,
     deduplicate: bool = True
 ) -> str:
     """
@@ -99,12 +102,14 @@ def save_raw_urls_to_txt(
     if output_dir is None:
         output_dir = config.OUTPUT_DIR
 
+    output_path = Path(output_dir)
+
     # Add creator subfolder if configured
     if config.OUTPUT_ORGANIZE_BY_CREATOR:
-        output_dir = os.path.join(output_dir, creator_vanity)
+        output_path = output_path / creator_vanity
 
     # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     # Deduplicate if requested
     if deduplicate:
@@ -113,14 +118,14 @@ def save_raw_urls_to_txt(
     # Generate filename with timestamp (same as JSON but .txt)
     timestamp = datetime.now().strftime(config.TIMESTAMP_FORMAT)
     filename = f"{creator_vanity}_{timestamp}.txt"
-    filepath = os.path.join(output_dir, filename)
+    filepath = output_path / filename
 
     # Save to file (one URL per line)
-    with open(filepath, 'w', encoding='utf-8') as f:
+    with filepath.open('w', encoding='utf-8') as f:
         for url in urls:
             f.write(f"{url}\n")
 
-    return filepath
+    return str(filepath)
 
 
 def parse_date_input(date_str: str) -> datetime:
@@ -185,7 +190,7 @@ def format_post_for_output(post: dict, video_urls: List[str]) -> dict:
     }
 
 
-def print_banner(text: str):
+def print_banner(text: str) -> None:
     """
     Print a formatted banner.
 
@@ -200,7 +205,7 @@ def print_banner(text: str):
     print()
 
 
-def print_creator_list(creators: List[Dict[str, str]]):
+def print_creator_list(creators: List[Dict[str, str]]) -> None:
     """
     Print a formatted list of creators with box borders.
 

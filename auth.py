@@ -5,11 +5,11 @@ Handles loading cookies from JSON file and creating an authenticated session.
 """
 
 import json
-import os
 import re
-import requests
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Dict, List, Optional, Tuple, Union
+
+import requests
 
 import config
 
@@ -65,7 +65,7 @@ def find_cookie_file() -> str:
         )
 
 
-def load_cookies_from_file(cookies_path: str = None) -> dict:
+def load_cookies_from_file(cookies_path: Optional[Union[str, Path]] = None) -> Dict[str, str]:
     """
     Load cookies from a JSON file exported from a browser extension.
 
@@ -82,10 +82,12 @@ def load_cookies_from_file(cookies_path: str = None) -> dict:
     if cookies_path is None:
         cookies_path = config.COOKIES_FILE
 
-    with open(cookies_path, 'r') as f:
+    path = Path(cookies_path)
+    with path.open('r', encoding='utf-8') as f:
         cookie_data = json.load(f)
 
     # Handle different cookie export formats
+    cookies_list: List[Dict[str, str]]
     if isinstance(cookie_data, dict) and 'cookies' in cookie_data:
         # Format: {"url": "...", "cookies": [...]}
         cookies_list = cookie_data['cookies']
@@ -96,14 +98,15 @@ def load_cookies_from_file(cookies_path: str = None) -> dict:
         raise ValueError("Unsupported cookie file format")
 
     # Convert to simple dict
-    cookies = {}
-    for cookie in cookies_list:
-        cookies[cookie['name']] = cookie['value']
+    cookies: Dict[str, str] = {
+        cookie['name']: cookie['value']
+        for cookie in cookies_list
+    }
 
     return cookies
 
 
-def create_authenticated_session(cookies: dict) -> requests.Session:
+def create_authenticated_session(cookies: Dict[str, str]) -> requests.Session:
     """
     Create a requests session with Patreon cookies.
 
@@ -166,7 +169,7 @@ def extract_csrf_token(session: requests.Session) -> str:
     return csrf
 
 
-def validate_authentication(session: requests.Session, csrf_token: str) -> dict:
+def validate_authentication(session: requests.Session, csrf_token: str) -> Dict[str, Union[str, int]]:
     """
     Validate that the session is properly authenticated.
 
@@ -213,7 +216,9 @@ def validate_authentication(session: requests.Session, csrf_token: str) -> dict:
     }
 
 
-def setup_authenticated_session(cookies_path: str = None) -> Tuple[requests.Session, str, dict]:
+def setup_authenticated_session(
+    cookies_path: Optional[Union[str, Path]] = None
+) -> Tuple[requests.Session, str, Dict[str, Union[str, int]]]:
     """
     Complete authentication setup: load cookies, create session, get CSRF token, validate.
 

@@ -6,7 +6,7 @@ depending on the post type.
 """
 
 import re
-from typing import List, Set
+from typing import Dict, List, Optional, Set
 
 import config
 
@@ -16,7 +16,7 @@ VIMEO_PATTERN = r'https://vimeo\.com/\d+(?:/[a-z0-9]+)?(?:\?share=copy)?(?:&[^\s
 YOUTUBE_PATTERN = r'https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|embed/|shorts/|v/|live/)|youtu\.be/)([a-zA-Z0-9_-]{11})(?:[?&][^\s<"]*)?'
 
 
-def extract_from_content(content: str) -> List[str]:
+def extract_from_content(content: Optional[str]) -> List[str]:
     """
     Extract video URLs from post content using regex.
 
@@ -33,14 +33,17 @@ def extract_from_content(content: str) -> List[str]:
         return []
 
     # Find all video URLs (both Vimeo and YouTube)
-    vimeo_urls = re.findall(VIMEO_PATTERN, str(content))
-    youtube_matches = re.findall(YOUTUBE_PATTERN, str(content))
+    vimeo_urls: List[str] = re.findall(VIMEO_PATTERN, str(content))
+    youtube_matches: List[str] = re.findall(YOUTUBE_PATTERN, str(content))
 
     # Reconstruct full YouTube URLs from matched IDs
-    youtube_urls = [f'https://www.youtube.com/watch?v={video_id}' for video_id in youtube_matches]
+    youtube_urls: List[str] = [
+        f'https://www.youtube.com/watch?v={video_id}'
+        for video_id in youtube_matches
+    ]
 
     # Combine both
-    urls = vimeo_urls + youtube_urls
+    urls: List[str] = vimeo_urls + youtube_urls
 
     # Deduplicate if configured
     if config.DEDUPLICATE_URLS:
@@ -69,7 +72,7 @@ def extract_from_content(content: str) -> List[str]:
     return sorted(urls)
 
 
-def extract_from_embed(embed_data: dict) -> List[str]:
+def extract_from_embed(embed_data: Optional[Dict]) -> List[str]:
     """
     Extract video URL from embed data.
 
@@ -136,7 +139,7 @@ def extract_from_embed(embed_data: dict) -> List[str]:
     return [url]
 
 
-def extract_youtube_id(url: str) -> str:
+def extract_youtube_id(url: Optional[str]) -> str:
     """
     Extract YouTube video ID from various YouTube URL formats.
 
@@ -167,7 +170,7 @@ def extract_youtube_id(url: str) -> str:
     return ''
 
 
-def parse_vimeo_url(url: str) -> dict:
+def parse_vimeo_url(url: str) -> Dict[str, Optional[str]]:
     """
     Parse a Vimeo URL to extract video ID and privacy hash.
 
@@ -237,7 +240,7 @@ def deduplicate_vimeo_urls(urls: List[str]) -> List[str]:
     return other_urls + deduplicated_vimeo
 
 
-def extract_all_video_urls(post: dict) -> List[str]:
+def extract_all_video_urls(post: Dict) -> List[str]:
     """
     Extract all video URLs from a post using all available methods.
 
@@ -255,16 +258,16 @@ def extract_all_video_urls(post: dict) -> List[str]:
 
     # Method 1: Check embed data (for video_embed posts)
     if 'embed' in attrs and attrs['embed']:
-        embed_urls = extract_from_embed(attrs['embed'])
+        embed_urls: List[str] = extract_from_embed(attrs['embed'])
         all_urls.update(embed_urls)
 
     # Method 2: Check content (for text posts or posts with video links)
     if 'content' in attrs and attrs['content']:
-        content_urls = extract_from_content(attrs['content'])
+        content_urls: List[str] = extract_from_content(attrs['content'])
         all_urls.update(content_urls)
 
     # Convert to list and deduplicate Vimeo URLs (prefer hash versions)
-    urls_list = list(all_urls)
+    urls_list: List[str] = list(all_urls)
     urls_list = deduplicate_vimeo_urls(urls_list)
 
     return sorted(urls_list)

@@ -6,10 +6,11 @@ Handles all interactions with Patreon's website and API endpoints.
 
 import json
 import re
-import requests
 import time
-from typing import List, Dict, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import requests
 
 import config
 
@@ -28,7 +29,7 @@ class PatreonClient:
         self.session = session
         self.csrf_token = csrf_token
 
-    def _extract_next_data(self, html: str) -> dict:
+    def _extract_next_data(self, html: str) -> Dict[str, Any]:
         """
         Extract __NEXT_DATA__ JSON from HTML page.
 
@@ -52,7 +53,12 @@ class PatreonClient:
 
         return json.loads(match.group(1))
 
-    def _find_all_objects_by_type(self, obj, type_name: str, results: Optional[List] = None) -> List[dict]:
+    def _find_all_objects_by_type(
+        self,
+        obj: Any,
+        type_name: str,
+        results: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
         """
         Recursively find all objects with a specific type in nested JSON.
 
@@ -108,7 +114,7 @@ class PatreonClient:
             # If we can't check, assume compatible (will fail later with clear message)
             return True
 
-    def get_creators(self, check_compatibility: bool = False) -> List[Dict[str, str]]:
+    def get_creators(self, check_compatibility: bool = False) -> List[Dict[str, Any]]:
         """
         Get list of creators the user is subscribed to.
 
@@ -151,8 +157,8 @@ class PatreonClient:
             })
 
         # Deduplicate by vanity
-        seen = set()
-        unique_creators = []
+        seen: set = set()
+        unique_creators: List[Dict[str, Any]] = []
         for creator in creators:
             if creator['vanity'] not in seen:
                 seen.add(creator['vanity'])
@@ -165,7 +171,12 @@ class PatreonClient:
 
         return sorted(unique_creators, key=lambda x: x['name'])
 
-    def get_creator_posts(self, vanity: str, max_posts: Optional[int] = None, show_progress: bool = True) -> List[dict]:
+    def get_creator_posts(
+        self,
+        vanity: str,
+        max_posts: Optional[int] = None,
+        show_progress: bool = True
+    ) -> List[Dict[str, Any]]:
         """
         Get all posts from a creator using the Patreon API with pagination.
 
@@ -203,10 +214,10 @@ class PatreonClient:
             raise ValueError(f"Could not extract campaign ID for creator: {vanity}")
 
         # Now fetch posts via API with pagination
-        all_posts = []
-        cursor = None
-        page_num = 0
-        total_posts = None
+        all_posts: List[Dict[str, Any]] = []
+        cursor: Optional[str] = None
+        page_num: int = 0
+        total_posts: Optional[int] = None
 
         while True:
             page_num += 1
@@ -277,7 +288,7 @@ class PatreonClient:
 
         return all_posts
 
-    def get_post_details(self, post_id: str) -> dict:
+    def get_post_details(self, post_id: str) -> Dict[str, Any]:
         """
         Get full details for a specific post via API.
 
@@ -307,7 +318,7 @@ class PatreonClient:
 
         return {}
 
-    def enrich_post_with_details(self, post: dict) -> dict:
+    def enrich_post_with_details(self, post: Dict[str, Any]) -> Dict[str, Any]:
         """
         Enrich a post with full details from API if needed.
 
@@ -338,10 +349,10 @@ class PatreonClient:
 
     def filter_posts_by_date(
         self,
-        posts: List[dict],
+        posts: List[Dict[str, Any]],
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
-    ) -> List[dict]:
+    ) -> List[Dict[str, Any]]:
         """
         Filter posts by publication date range.
 
@@ -356,7 +367,7 @@ class PatreonClient:
         if not start_date and not end_date:
             return posts
 
-        filtered = []
+        filtered: List[Dict[str, Any]] = []
         for post in posts:
             attrs = post.get('attributes', {})
             published_str = attrs.get('published_at')

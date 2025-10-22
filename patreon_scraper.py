@@ -7,22 +7,27 @@ A tool to scrape Patreon posts and extract video URLs from Vimeo and YouTube.
 
 import sys
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-import auth
+import requests
+
 import api_client
-import video_extractor
-import utils
+import auth
 import config
+import utils
+import video_extractor
 
 
-def main():
+def main() -> int:
     """Main entry point for the scraper."""
     utils.print_startup_banner()
 
     # Step 1: Authenticate
     print("Authenticating with Patreon...")
     try:
+        session: requests.Session
+        csrf_token: str
+        user_info: Dict[str, Any]
         session, csrf_token, user_info = auth.setup_authenticated_session()
         print(f"✓ Logged in as: {user_info['name']}")
         print(f"  Email: {user_info['email']}")
@@ -44,13 +49,13 @@ def main():
 
     # Step 2: Get creators
     print("\nFetching subscribed creators...")
-    client = api_client.PatreonClient(session, csrf_token)
+    client: api_client.PatreonClient = api_client.PatreonClient(session, csrf_token)
 
     try:
         # Check compatibility in interactive mode (shows warnings in list)
         # Skip in auto mode to save time
-        check_compat = not config.AUTO_MODE
-        creators = client.get_creators(check_compatibility=check_compat)
+        check_compat: bool = not config.AUTO_MODE
+        creators: List[Dict[str, Any]] = client.get_creators(check_compatibility=check_compat)
 
         if check_compat:
             print(f"✓ Found {len(creators)} creator(s) - checking compatibility...")
@@ -65,6 +70,7 @@ def main():
         return 1
 
     # Step 3: Select creator (AUTO_MODE or interactive)
+    selected_creators: List[Dict[str, Any]]
     if config.AUTO_MODE:
         # AUTO MODE - use config settings, no prompts
         print("\n" + "=" * 60)
@@ -130,8 +136,8 @@ def main():
                 print("Invalid input. Please enter a number, 'all', or 'q'")
 
     # Step 4: Optional date filtering
-    start_date = None
-    end_date = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
 
     if not config.AUTO_MODE:
         # Check if we should ask for date filter based on config
@@ -160,9 +166,9 @@ def main():
                 print("Proceeding without date filter...")
 
     # Step 5: Output format selection (interactive mode only)
-    use_json = config.OUTPUT_JSON
-    use_txt = config.OUTPUT_RAW_URLS
-    dedupe_txt = config.DEDUPLICATE_RAW_URLS
+    use_json: bool = config.OUTPUT_JSON
+    use_txt: bool = config.OUTPUT_RAW_URLS
+    dedupe_txt: bool = config.DEDUPLICATE_RAW_URLS
 
     if not config.AUTO_MODE:
         print("\nSelect output format:")
@@ -223,10 +229,10 @@ def main():
 
 def scrape_creator(
     client: api_client.PatreonClient,
-    creator: dict,
+    creator: Dict[str, Any],
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None
-):
+) -> None:
     """
     Scrape posts from a single creator.
 
@@ -282,8 +288,8 @@ def scrape_creator(
     # Process each post
     print(f"  Processing posts and extracting video URLs...")
 
-    results = []
-    total_video_urls = 0
+    results: List[Dict[str, Any]] = []
+    total_video_urls: int = 0
 
     for i, post in enumerate(posts, 1):
         post_id = post.get('id')
@@ -340,7 +346,7 @@ def scrape_creator(
     }
 
     # Collect all video URLs for raw export
-    all_video_urls = [url for post in results for url in post['video_urls']]
+    all_video_urls: List[str] = [url for post in results for url in post['video_urls']]
 
     # Check if we should save (based on whether we found videos)
     should_save = total_video_urls > 0 or not config.SKIP_EXPORT_IF_NO_VIDEOS
@@ -352,7 +358,7 @@ def scrape_creator(
 
     # Save files based on configuration
     print()
-    saved_any = False
+    saved_any: bool = False
 
     # Save JSON if enabled
     if config.OUTPUT_JSON:
