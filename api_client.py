@@ -15,8 +15,15 @@ import requests
 import config
 
 
+class CreatorWebsiteError(ValueError):
+    """Raised when a creator uses the unsupported Creator Website (Netflix-style) format."""
+
+
 class PatreonClient:
     """Client for interacting with Patreon's API and web pages."""
+
+    _MAX_PAGES = 200
+    _MAX_POSTS_HARD_LIMIT = 5000
 
     def __init__(self, session: requests.Session, csrf_token: str):
         """
@@ -28,6 +35,25 @@ class PatreonClient:
         """
         self.session = session
         self.csrf_token = csrf_token
+        self._enrich_cache: Dict[str, Dict[str, Any]] = {}
+
+    def _get_with_retry(self, url: str, headers: Dict[str, str]) -> requests.Response:
+        """GET with exponential backoff for transient errors."""
+        max_retries = max(1, int(getattr(config, 'MAX_RETRIES', 3)))
+        for attempt in range(max_retries):
+            try:
+                resp = self.session.get(url, headers=headers, timeout=config.REQUEST_TIMEOUT)
+                if resp.status_code in (429, 502, 503, 504) and attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                resp.raise_for_status()
+                return resp
+            except requests.RequestException:
+                if attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                else:
+                    raise
+        raise RuntimeError("BUG: retry loop exited unexpectedly")
 
     def _extract_next_data(self, html: str) -> Dict[str, Any]:
         """
@@ -196,7 +222,7 @@ class PatreonClient:
         # Check if this is a Creator Website (Netflix-style format)
         # These use /cw/ URLs and have a completely different layout
         if '/cw/' in response.url or 'creator-page-v2' in response.text:
-            raise ValueError(
+            raise CreatorWebsiteError(
                 f"Creator '{vanity}' uses Patreon Creator Website format (Netflix-style layout). "
                 f"This format is not supported by this tool as it uses Patreon-hosted videos "
                 f"rather than Vimeo/YouTube embeds."
@@ -219,8 +245,17 @@ class PatreonClient:
         page_num: int = 0
         total_posts: Optional[int] = None
 
+        effective_max = max_posts
+        if effective_max is None:
+            effective_max = self._MAX_POSTS_HARD_LIMIT
+        elif effective_max > self._MAX_POSTS_HARD_LIMIT:
+            effective_max = self._MAX_POSTS_HARD_LIMIT
+
         while True:
             page_num += 1
+
+            if page_num > self._MAX_PAGES:
+                break
 
             # Build API URL
             api_url = (
@@ -242,9 +277,7 @@ class PatreonClient:
                 'Referer': page_url
             }
 
-            response = self.session.get(api_url, headers=headers, timeout=config.REQUEST_TIMEOUT)
-            response.raise_for_status()
-
+            response = self._get_with_retry(api_url, headers)
             page_data = response.json()
 
             # Add delay between requests if configured
@@ -269,8 +302,8 @@ class PatreonClient:
                 print(f"    Fetched {len(all_posts)}/{total_posts} posts...", end='\r')
 
             # Check if we've reached max_posts
-            if max_posts and len(all_posts) >= max_posts:
-                all_posts = all_posts[:max_posts]
+            if len(all_posts) >= effective_max:
+                all_posts = all_posts[:effective_max]
                 break
 
             # Check for next page
@@ -336,10 +369,12 @@ class PatreonClient:
 
         # If it's a video_embed post and has no embed data, fetch from API
         if config.ENRICH_VIDEO_EMBEDS and post_type == 'video_embed' and not attrs.get('embed'):
+            if post_id in self._enrich_cache:
+                return self._enrich_cache[post_id]
             try:
                 full_post = self.get_post_details(post_id)
-                # Merge the full data
                 if full_post:
+                    self._enrich_cache[post_id] = full_post
                     return full_post
             except Exception as e:
                 if config.VERBOSE or config.LOG_API_REQUESTS:

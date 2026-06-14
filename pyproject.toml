@@ -10,6 +10,9 @@ requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
 dependencies = ["requests>=2.31.0"]
 
+[project.scripts]
+patreon-video-scraper = "patreon_scraper:main"
+
 [tool.setuptools]
 py-modules = ["patreon_scraper", "api_client", "auth", "config", "utils", "video_extractor"]
 

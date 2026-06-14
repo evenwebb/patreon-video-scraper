@@ -20,7 +20,40 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install .
 
       - name: Verify imports
         run: python -c "import patreon_scraper; import api_client; import auth; import video_extractor; import utils; print('All imports OK')"
+
+      - name: Verify --version
+        run: python -m patreon_scraper --version
+
+      - name: Verify --dry-run
+        run: python -m patreon_scraper --dry-run || true
+
+      - name: Validate video URL regex
+        run: |
+          python -c "
+          from video_extractor import extract_youtube_id, is_vimeo_url, is_youtube_url, _clean_video_url
+          # YouTube IDs
+          assert extract_youtube_id('https://www.youtube.com/watch?v=dQw4w9WgXcQ') == 'dQw4w9WgXcQ'
+          assert extract_youtube_id('https://youtu.be/dQw4w9WgXcQ') == 'dQw4w9WgXcQ'
+          assert extract_youtube_id('https://www.youtube.com/embed/dQw4w9WgXcQ') == 'dQw4w9WgXcQ'
+          assert extract_youtube_id('https://www.youtube.com/shorts/dQw4w9WgXcQ') == 'dQw4w9WgXcQ'
+          assert extract_youtube_id('https://www.youtube.com/live/dQw4w9WgXcQ') == 'dQw4w9WgXcQ'
+          # Vimeo
+          assert is_vimeo_url('https://vimeo.com/123456789')
+          assert is_vimeo_url('https://vimeo.com/123456789/abc123def')
+          # YouTube
+          assert is_youtube_url('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+          assert is_youtube_url('https://youtu.be/dQw4w9WgXcQ')
+          # URL cleaning preserves privacy hash
+          cleaned = _clean_video_url('https://vimeo.com/123456789/abc123?share=copy')
+          assert 'abc123' in cleaned, f'Privacy hash stripped: {cleaned}'
+          cleaned2 = _clean_video_url('https://vimeo.com/123456789?share=copy')
+          assert cleaned2 == 'https://vimeo.com/123456789', f'Unexpected: {cleaned2}'
+          # YouTube cleaning strips tracking
+          cleaned3 = _clean_video_url('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf')
+          assert cleaned3 == 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', f'Unexpected: {cleaned3}'
+          print('All video URL regex tests passed')
+          "

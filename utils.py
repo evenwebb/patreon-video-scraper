@@ -6,6 +6,7 @@ Helper functions for file I/O, date parsing, and formatting.
 
 import json
 import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -74,9 +75,22 @@ def save_results_to_json(
     )
     filepath = output_path / filename
 
-    # Save to file
-    with filepath.open('w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    # Save to file atomically
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{creator_vanity}_",
+        suffix=".json.tmp",
+        dir=str(output_path),
+    )
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, filepath)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
     return str(filepath)
 
@@ -120,10 +134,23 @@ def save_raw_urls_to_txt(
     filename = f"{creator_vanity}_{timestamp}.txt"
     filepath = output_path / filename
 
-    # Save to file (one URL per line)
-    with filepath.open('w', encoding='utf-8') as f:
-        for url in urls:
-            f.write(f"{url}\n")
+    # Save to file atomically (one URL per line)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{creator_vanity}_",
+        suffix=".txt.tmp",
+        dir=str(output_path),
+    )
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            for url in urls:
+                f.write(f"{url}\n")
+        os.replace(tmp_path, filepath)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
     return str(filepath)
 

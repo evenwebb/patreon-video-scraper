@@ -33,8 +33,9 @@ def extract_from_content(content: Optional[str]) -> List[str]:
         return []
 
     # Find all video URLs (both Vimeo and YouTube)
-    vimeo_urls: List[str] = re.findall(VIMEO_PATTERN, str(content))
-    youtube_matches: List[str] = re.findall(YOUTUBE_PATTERN, str(content))
+    text = content.decode('utf-8') if isinstance(content, bytes) else str(content)
+    vimeo_urls: List[str] = re.findall(VIMEO_PATTERN, text)
+    youtube_matches: List[str] = re.findall(YOUTUBE_PATTERN, text)
 
     # Reconstruct full YouTube URLs from matched IDs
     youtube_urls: List[str] = [
@@ -51,19 +52,7 @@ def extract_from_content(content: Optional[str]) -> List[str]:
 
     # Clean URLs if configured
     if config.CLEAN_VIDEO_URLS:
-        cleaned_urls = []
-        for url in urls:
-            # Remove tracking parameters
-            # For Vimeo: remove ?share=copy and other params
-            # For YouTube: remove &ab_channel and other tracking params
-            if 'vimeo.com' in url:
-                url = re.sub(r'\?share=copy', '', url)
-                url = re.sub(r'&.*$', '', url)
-            elif 'youtube.com' in url or 'youtu.be' in url:
-                # Keep ?v= but remove other parameters
-                url = re.sub(r'&.*$', '', url)
-            cleaned_urls.append(url)
-        urls = cleaned_urls
+        urls = [_clean_video_url(u) for u in urls]
 
     # Final deduplication after cleaning (in case cleaning created duplicates)
     if config.DEDUPLICATE_URLS:
@@ -106,7 +95,7 @@ def extract_from_embed(embed_data: Optional[Dict]) -> List[str]:
         html = embed_data.get('html', '')
         if html:
             # Extract from iframe src
-            match = re.search(r'player\.vimeo\.com/video/(\d+)(?:\?h=([a-z0-9]+))?', html)
+            match = re.search(r'(?:https?://)?player\.vimeo\.com/video/(\d+)(?:\?h=([a-z0-9]+))?', html)
             if match:
                 video_id = match.group(1)
                 privacy_hash = match.group(2)
@@ -126,11 +115,7 @@ def extract_from_embed(embed_data: Optional[Dict]) -> List[str]:
 
     # Clean URL if configured
     if config.CLEAN_VIDEO_URLS:
-        if 'vimeo.com' in url:
-            url = re.sub(r'\?share=copy', '', url)
-            url = re.sub(r'&.*$', '', url)
-        elif 'youtube.com' in url or 'youtu.be' in url:
-            url = re.sub(r'&.*$', '', url)
+        url = _clean_video_url(url)
 
     # Validate URL if configured
     if config.VALIDATE_VIDEO_URLS and not is_video_url(url):
@@ -192,6 +177,45 @@ def parse_vimeo_url(url: str) -> Dict[str, Optional[str]]:
         }
 
     return {'video_id': None, 'hash': None}
+
+
+def _clean_video_url(url: str) -> str:
+    """Remove tracking/referral params from a video URL while preserving essential ones."""
+    if 'vimeo.com' in url:
+        # Remove ?share=copy if present, but preserve privacy hash (/?h=... param)
+        url = re.sub(r'\?share=copy', '', url)
+        # Remove tracking params but NOT the privacy hash
+        parsed = re.match(r'(https://vimeo\.com/\d+(?:/[a-z0-9]+)?)(.*)', url)
+        if parsed:
+            base = parsed.group(1)
+            query = parsed.group(2)
+            if query:
+                keep = []
+                for param in query.lstrip('?').split('&'):
+                    if param.startswith('h='):
+                        keep.append(param)
+                if keep:
+                    base = f'{base}?{"&".join(keep)}'
+            url = base
+    elif 'youtube.com' in url or 'youtu.be' in url:
+        # Keep ?v= or the path ID, strip tracking params (list, si, feature, ab_channel, etc.)
+        if 'youtube.com/watch' in url:
+            match = re.match(r'(https://www\.youtube\.com/watch\?v=[a-zA-Z0-9_-]{11})(.*)', url)
+            if match:
+                url = match.group(1)
+        elif 'youtube.com/shorts/' in url:
+            match = re.match(r'(https://www\.youtube\.com/shorts/[a-zA-Z0-9_-]{11})(.*)', url)
+            if match:
+                url = match.group(1)
+        elif 'youtube.com/live/' in url:
+            match = re.match(r'(https://www\.youtube\.com/live/[a-zA-Z0-9_-]{11})(.*)', url)
+            if match:
+                url = match.group(1)
+        elif 'youtu.be/' in url:
+            match = re.match(r'(https://youtu\.be/[a-zA-Z0-9_-]{11})(.*)', url)
+            if match:
+                url = match.group(1)
+    return url
 
 
 def deduplicate_vimeo_urls(urls: List[str]) -> List[str]:
@@ -268,9 +292,10 @@ def extract_all_video_urls(post: Dict) -> List[str]:
 
     # Convert to list and deduplicate Vimeo URLs (prefer hash versions)
     urls_list: List[str] = list(all_urls)
-    urls_list = deduplicate_vimeo_urls(urls_list)
+    if config.DEDUPLICATE_URLS:
+        urls_list = deduplicate_vimeo_urls(urls_list)
 
-    return sorted(urls_list)
+    return urls_list
 
 
 def is_vimeo_url(url: str) -> bool:

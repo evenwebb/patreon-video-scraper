@@ -36,7 +36,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         try:
             print(f"patreon-video-scraper {version('patreon-video-scraper')}")
         except Exception:
-            print("patreon-video-scraper (unknown version)")
+            print("patreon-video-scraper 1.0.0")
         return 0
 
     if args.dry_run:
@@ -183,8 +183,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     end_date = utils.parse_date_input(end_str)
 
                 if start_date and end_date and start_date > end_date:
-                    print("Warning: Start date is after end date. Swapping...")
                     start_date, end_date = end_date, start_date
+                    print(f"Warning: Start date was after end date. Swapped to {start_date.date()} → {end_date.date()}")
 
                 print(f"\n✓ Date filter: {start_date or 'any'} to {end_date or 'any'}")
             except Exception as e:
@@ -280,21 +280,18 @@ def scrape_creator(
             show_progress=config.SHOW_PROGRESS
         )
         print(f"  ✓ Fetched {len(posts)} post(s)")
+    except api_client.CreatorWebsiteError as e:
+        logger.warning("Incompatible format for %s: %s", creator['name'], e)
+        print(f"  ⚠️  INCOMPATIBLE FORMAT")
+        print(f"  ⓘ  This creator uses Patreon's Creator Website (Netflix-style layout)")
+        print(f"  ⓘ  Videos are hosted on Patreon, not Vimeo/YouTube")
+        print(f"  ⓘ  This format is not supported by this tool")
+        print(f"  →  Skipping {creator['name']}")
+        return
     except ValueError as e:
-        error_msg = str(e)
-        # Check if this is the Creator Website format error
-        if "Creator Website format" in error_msg or "Netflix-style" in error_msg:
-            logger.warning("Incompatible format for %s: %s", creator['name'], error_msg)
-            print(f"  ⚠️  INCOMPATIBLE FORMAT")
-            print(f"  ⓘ  This creator uses Patreon's Creator Website (Netflix-style layout)")
-            print(f"  ⓘ  Videos are hosted on Patreon, not Vimeo/YouTube")
-            print(f"  ⓘ  This format is not supported by this tool")
-            print(f"  →  Skipping {creator['name']}")
-        else:
-            print(f"  ✗ Failed to fetch posts: {e}")
-            if config.SHOW_FULL_ERRORS:
-                import traceback
-                traceback.print_exc()
+        print(f"  ✗ Failed to fetch posts: {e}")
+        if config.SHOW_FULL_ERRORS:
+            traceback.print_exc()
         return
     except Exception as e:
         print(f"  ✗ Failed to fetch posts: {e}")
