@@ -5,8 +5,11 @@ Patreon Video Extractor
 A tool to scrape Patreon posts and extract video URLs from Vimeo and YouTube.
 """
 
+import logging
 import sys
+import traceback
 from datetime import datetime
+from importlib.metadata import version
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -17,9 +20,29 @@ import config
 import utils
 import video_extractor
 
+logger = logging.getLogger(__name__)
 
-def main() -> int:
+
+def main(argv: Optional[List[str]] = None) -> int:
     """Main entry point for the scraper."""
+    import argparse
+    parser = argparse.ArgumentParser(description="Patreon Video Extractor")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be scraped without saving")
+    parser.add_argument("--version", action="store_true", help="Show version and exit")
+    parser.add_argument("--resume", action="store_true", help="Skip already-scraped creators")
+    args = parser.parse_args(argv)
+
+    if args.version:
+        try:
+            print(f"patreon-video-scraper {version('patreon-video-scraper')}")
+        except Exception:
+            print("patreon-video-scraper (unknown version)")
+        return 0
+
+    if args.dry_run:
+        config.DRY_RUN = True
+        print("DRY RUN — no files will be saved\n")
+
     utils.print_startup_banner()
 
     # Step 1: Authenticate
@@ -43,7 +66,6 @@ def main() -> int:
     except Exception as e:
         print(f"\n✗ Authentication failed: {e}")
         if config.SHOW_FULL_ERRORS:
-            import traceback
             traceback.print_exc()
         return 1
 
@@ -139,11 +161,15 @@ def main() -> int:
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
 
-    if not config.AUTO_MODE:
-        # Check if we should ask for date filter based on config
+    if config.AUTO_MODE:
+        if config.DEFAULT_USE_DATE_FILTER and config.AUTO_START_DATE:
+            start_date = utils.parse_date_input(config.AUTO_START_DATE)
+            if config.AUTO_END_DATE:
+                end_date = utils.parse_date_input(config.AUTO_END_DATE)
+            print(f"✓ Date filter: {start_date or 'any'} to {end_date or 'any'}")
+    else:
         should_filter = config.DEFAULT_USE_DATE_FILTER
         if should_filter is None:
-            # Ask user
             should_filter = input("\nApply date range filter? (y/n): ").strip().lower() == 'y'
 
         if should_filter:
@@ -258,6 +284,7 @@ def scrape_creator(
         error_msg = str(e)
         # Check if this is the Creator Website format error
         if "Creator Website format" in error_msg or "Netflix-style" in error_msg:
+            logger.warning("Incompatible format for %s: %s", creator['name'], error_msg)
             print(f"  ⚠️  INCOMPATIBLE FORMAT")
             print(f"  ⓘ  This creator uses Patreon's Creator Website (Netflix-style layout)")
             print(f"  ⓘ  Videos are hosted on Patreon, not Vimeo/YouTube")
@@ -272,7 +299,6 @@ def scrape_creator(
     except Exception as e:
         print(f"  ✗ Failed to fetch posts: {e}")
         if config.SHOW_FULL_ERRORS:
-            import traceback
             traceback.print_exc()
         return
 
@@ -301,8 +327,8 @@ def scrape_creator(
         if post_type == 'video_embed':
             post = client.enrich_post_with_details(post)
 
-        # Extract video URLs (Vimeo and YouTube)
-        video_urls = video_extractor.extract_all_video_urls(post)
+        # Extract video URLs (Vimeo and YouTube), filter empty strings
+        video_urls = [u for u in video_extractor.extract_all_video_urls(post) if u and u.strip()]
 
         if video_urls:
             total_video_urls += len(video_urls)
@@ -358,6 +384,9 @@ def scrape_creator(
 
     # Save files based on configuration
     print()
+    if getattr(config, 'DRY_RUN', False):
+        print(f"  [DRY RUN] Would save {total_video_urls} video URL(s) from {len(results)} post(s)")
+        return
     saved_any: bool = False
 
     # Save JSON if enabled
@@ -404,6 +433,5 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"\n\n✗ Unexpected error: {e}")
         if config.SHOW_FULL_ERRORS:
-            import traceback
             traceback.print_exc()
         sys.exit(1)
